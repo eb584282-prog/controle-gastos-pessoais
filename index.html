@@ -125,12 +125,31 @@
   .income-row button { padding: 6px 12px; font-size: 12px; }
   .empty-state { color: #6f6e6a; font-size: 13px; text-align: center; padding: 20px 0; }
   .section-title { font-size: 14px; font-weight: 700; margin-bottom: 10px; color: #f2f1ed; }
+  .verse-badge {
+    background: rgba(59,130,246,.14);
+    border-radius: 12px;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #dbe8fd;
+    white-space: nowrap;
+    overflow-x: auto;
+    display: block;
+    width: fit-content;
+    max-width: 100%;
+    margin: 8px auto 14px;
+    text-align: center;
+  }
+  .verse-badge .verse-icon { margin-right: 4px; }
+  .verse-badge b { color: #7fb3f5; }
+  .verse-badge .verse-note { font-size: 12px; font-weight: 400; font-style: italic; color: #9fc0f2; margin-left: 8px; }
 </style>
 </head>
 <body>
 <div id="app">
 
 <h1>Controle de Gastos Pessoais</h1>
+<div class="verse-badge"><span class="verse-icon">📖</span><b>Provérbios 13:11</b>: "A riqueza que é fácil de ganhar diminui, mas quem a ajunta com o próprio trabalho terá cada vez mais." <span class="verse-note">— O esforço honesto traz estabilidade duradoura.</span></div>
 <div class="sub">Registre seus gastos e acompanhe o saldo mês a mês.</div>
 <div class="sync-status" id="syncStatus">Carregando...</div>
 
