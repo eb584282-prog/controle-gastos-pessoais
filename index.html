@@ -118,6 +118,7 @@
   .tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; background: #24321f; color: #86c66a; }
   .tag.fixo { background: #1c2c42; color: #7fb3f5; }
   .tag.variavel { background: #3a2418; color: #e8a06e; }
+  .tag.extra { background: #24321f; color: #86c66a; }
   .del-btn { background: none; border: none; color: #6f6e6a; cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 6px; }
   .del-btn:hover { color: #f87171; }
   .income-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #e8e7e3; flex-wrap: wrap; }
@@ -164,12 +165,24 @@
   <div class="income-row">
     <span>Renda do mês:</span>
     <input type="number" id="incomeInput" placeholder="0,00" step="0.01" min="0">
-    <div class="sep"></div>
-    <span>Renda extra:</span>
-    <input type="number" id="extraIncomeInput" placeholder="0,00" step="0.01" min="0" title="Caso você realize uma renda extra no mês" style="width:100px;">
-    <input type="text" id="extraIncomeDescInput" placeholder="De onde veio? Ex: freelance, bônus" style="min-width:180px;">
     <button class="primary" id="saveIncomeBtn">Salvar renda</button>
   </div>
+</div>
+
+<div class="card">
+  <div class="section-title">Renda extra</div>
+  <form class="entry-form" id="extraIncomeForm">
+    <div class="field desc">
+      <label>De onde veio?</label>
+      <input type="text" id="fExtraDesc" placeholder="Ex: Freelance, bônus" required>
+    </div>
+    <div class="field amount">
+      <label>Valor (R$)</label>
+      <input type="number" id="fExtraAmount" step="0.01" min="0" placeholder="0,00" required>
+    </div>
+    <button type="submit" class="primary">Adicionar</button>
+  </form>
+  <div id="extraIncomeListWrap"></div>
 </div>
 
 <div class="summary-grid">
@@ -301,7 +314,7 @@
       var raw = localStorage.getItem(STORAGE_KEY);
       if(raw) return JSON.parse(raw);
     } catch(e){ console.warn('Falha ao ler dados salvos', e); }
-    return { entries: {}, incomes: {} };
+    return { entries: {}, incomes: {}, extraIncomes: {} };
   }
   function saveLocal(d){
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); }
@@ -311,6 +324,7 @@
   var data = loadLocal();
   if(!data.entries) data.entries = {};
   if(!data.incomes) data.incomes = {};
+  if(!data.extraIncomes) data.extraIncomes = {};
 
   var today = new Date();
   var currentYear = today.getFullYear();
@@ -325,6 +339,11 @@
   function activeEntries(){
     return Object.keys(data.entries).map(function(id){
       var e = data.entries[id]; return Object.assign({id:id}, e);
+    }).filter(function(e){ return !e.deletedAt; });
+  }
+  function activeExtraIncomes(){
+    return Object.keys(data.extraIncomes).map(function(id){
+      var e = data.extraIncomes[id]; return Object.assign({id:id}, e);
     }).filter(function(e){ return !e.deletedAt; });
   }
 
@@ -350,6 +369,7 @@
     if(!cloud) return;
     var cloudEntries = cloud.entries || {};
     var cloudIncomes = cloud.incomes || {};
+    var cloudExtraIncomes = cloud.extraIncomes || {};
     Object.keys(cloudEntries).forEach(function(id){
       var l = data.entries[id], c = cloudEntries[id];
       if(!l){ data.entries[id] = c; return; }
@@ -361,6 +381,13 @@
     Object.keys(cloudIncomes).forEach(function(k){
       var l = data.incomes[k], c = cloudIncomes[k];
       if(!l || (c.updatedAt||0) > (l.updatedAt||0)){ data.incomes[k] = c; }
+    });
+    Object.keys(cloudExtraIncomes).forEach(function(id){
+      var l = data.extraIncomes[id], c = cloudExtraIncomes[id];
+      if(!l){ data.extraIncomes[id] = c; return; }
+      if(c.deletedAt && !l.deletedAt){ data.extraIncomes[id] = c; return; }
+      if(l.deletedAt && !c.deletedAt){ return; }
+      if((c.updatedAt||0) > (l.updatedAt||0)){ data.extraIncomes[id] = c; }
     });
   }
 
@@ -420,12 +447,12 @@
     var monthEntries = all.filter(function(e){ return e.date && e.date.slice(0,7) === key; });
     var incomeObj = data.incomes[key];
     var baseIncome = incomeObj ? (incomeObj.value||0) : 0;
-    var extraIncome = incomeObj ? (incomeObj.extra||0) : 0;
-    var extraDesc = incomeObj ? (incomeObj.extraDesc||'') : '';
-    var income = baseIncome + extraIncome;
     document.getElementById('incomeInput').value = baseIncome || '';
-    document.getElementById('extraIncomeInput').value = extraIncome || '';
-    document.getElementById('extraIncomeDescInput').value = extraDesc || '';
+
+    var allExtra = activeExtraIncomes();
+    var monthExtraIncomes = allExtra.filter(function(e){ return e.month === key; });
+    var extraTotal = monthExtraIncomes.reduce(function(sum,e){ return sum + (parseFloat(e.amount)||0); }, 0);
+    var income = baseIncome + extraTotal;
 
     var totalSpent = 0, totalFixed = 0, totalVar = 0;
     var byCategory = {};
@@ -437,9 +464,12 @@
     });
 
     document.getElementById('statIncome').textContent = fmtMoney(income);
-    document.getElementById('statIncomeBreakdown').textContent = extraIncome > 0
-      ? (fmtMoney(baseIncome) + ' + ' + fmtMoney(extraIncome) + ' extra' + (extraDesc ? ' (' + extraDesc + ')' : ''))
-      : 'Toque em "Salvar renda" para editar';
+    if(extraTotal > 0){
+      document.getElementById('statIncomeBreakdown').textContent = fmtMoney(baseIncome) + ' + ' + fmtMoney(extraTotal) +
+        (monthExtraIncomes.length > 1 ? (' em ' + monthExtraIncomes.length + ' rendas extras') : (' extra (' + monthExtraIncomes[0].description + ')'));
+    } else {
+      document.getElementById('statIncomeBreakdown').textContent = 'Toque em "Salvar renda" para editar';
+    }
     document.getElementById('statSpent').textContent = fmtMoney(totalSpent);
     document.getElementById('statFixed').textContent = fmtMoney(totalFixed);
     document.getElementById('statVariable').textContent = fmtMoney(totalVar);
@@ -470,6 +500,38 @@
     renderTrendChart(all);
     var filtered = activeFilter ? monthEntries.filter(function(e){ return e.type === activeFilter; }) : monthEntries;
     renderTable(filtered);
+    renderExtraIncomeList(monthExtraIncomes);
+  }
+
+  function renderExtraIncomeList(list){
+    var wrap = document.getElementById('extraIncomeListWrap');
+    if(!list.length){
+      wrap.innerHTML = '<div class="empty-state">Nenhuma renda extra registrada neste mês.</div>';
+      return;
+    }
+    list = list.slice().sort(function(a,b){ return (b.updatedAt||0) - (a.updatedAt||0); });
+    var html = '<table><thead><tr><th>De onde veio</th><th>Valor</th><th></th></tr></thead><tbody>';
+    list.forEach(function(e){
+      html += '<tr>' +
+        '<td>' + escapeHtml(e.description) + '</td>' +
+        '<td class="amount-col">' + fmtMoney(parseFloat(e.amount)) + '</td>' +
+        '<td><button class="del-btn" data-id="' + e.id + '" title="Excluir">✕</button></td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    wrap.innerHTML = html;
+    wrap.querySelectorAll('.del-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var id = btn.getAttribute('data-id');
+        if(data.extraIncomes[id]){
+          data.extraIncomes[id].deletedAt = Date.now();
+          data.extraIncomes[id].updatedAt = Date.now();
+        }
+        saveLocal(data);
+        render();
+        pullMergeAndPush();
+      });
+    });
   }
 
   function renderCategoryChart(byCategory){
@@ -586,10 +648,23 @@
   document.getElementById('saveIncomeBtn').addEventListener('click', function(){
     var key = monthKey(currentYear, currentMonth);
     var v = parseFloat(document.getElementById('incomeInput').value) || 0;
-    var vExtra = parseFloat(document.getElementById('extraIncomeInput').value) || 0;
-    var vExtraDesc = document.getElementById('extraIncomeDescInput').value.trim();
-    data.incomes[key] = { value: v, extra: vExtra, extraDesc: vExtraDesc, updatedAt: Date.now() };
+    data.incomes[key] = { value: v, updatedAt: Date.now() };
     saveLocal(data);
+    render();
+    pullMergeAndPush();
+  });
+
+  document.getElementById('extraIncomeForm').addEventListener('submit', function(ev){
+    ev.preventDefault();
+    var key = monthKey(currentYear, currentMonth);
+    var desc = document.getElementById('fExtraDesc').value.trim();
+    var amount = parseFloat(document.getElementById('fExtraAmount').value);
+    if(!desc || isNaN(amount) || amount <= 0){ return; }
+    var id = Date.now() + '_' + Math.random().toString(36).slice(2,7);
+    data.extraIncomes[id] = { month: key, description: desc, amount: amount, updatedAt: Date.now() };
+    saveLocal(data);
+    document.getElementById('fExtraDesc').value = '';
+    document.getElementById('fExtraAmount').value = '';
     render();
     pullMergeAndPush();
   });
